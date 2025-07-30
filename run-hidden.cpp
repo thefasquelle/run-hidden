@@ -27,6 +27,10 @@ std::wstring join(const std::vector<std::wstring>& elements, const std::wstring&
     return L"";
 }
 
+BOOL inline static IsValidHandle(HANDLE hHandle) {
+    return (hHandle != NULL) && (hHandle != INVALID_HANDLE_VALUE);
+}
+
 int APIENTRY wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -63,13 +67,40 @@ int APIENTRY wWinMain(
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
+    
+    // Create standard handles for child process
+    HANDLE me = GetCurrentProcess();
+    
+    HANDLE hInput  = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE hInputDup = NULL;
+    if (IsValidHandle(hInput) && DuplicateHandle(me, hInput, me, &hInputDup, 0, TRUE, DUPLICATE_SAME_ACCESS))
+    {
+        si.hStdInput = hInputDup;
+        si.dwFlags |= STARTF_USESTDHANDLES;
+    }
+    
+    HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE hOutputDup = NULL;
+    if (IsValidHandle(hOutput) && DuplicateHandle(me, hOutput, me, &hOutputDup, 0, TRUE, DUPLICATE_SAME_ACCESS))
+    {
+        si.hStdOutput = hOutputDup;
+        si.dwFlags |= STARTF_USESTDHANDLES;
+    }
+    
+    HANDLE hError  = GetStdHandle(STD_ERROR_HANDLE);
+    HANDLE hErrorDup = NULL;
+    if (IsValidHandle(hError) && DuplicateHandle(me, hError, me, &hErrorDup, 0, TRUE, DUPLICATE_SAME_ACCESS))
+    {
+        si.hStdError = hErrorDup;
+        si.dwFlags |= STARTF_USESTDHANDLES;
+    }
 
     CreateProcess(
         NULL,   // No module name (use command line)
         cmdl,   // Command line
         NULL,   // Process handle not inheritable
         NULL,   // Thread handle not inheritable
-        FALSE,  // Set handle inheritance to FALSE
+        ((si.dwFlags & STARTF_USESTDHANDLES) > 0), // Inherit handles if at least one is valid
         CREATE_NO_WINDOW, // No creation flags
         NULL,   // Use parent's environment block
         NULL,   // Use parent's starting directory 
@@ -85,6 +116,11 @@ int APIENTRY wWinMain(
     // Close process and thread handles. 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    
+    // Close duplicate handles
+    if (IsValidHandle(hInputDup))   CloseHandle(hInputDup);
+    if (IsValidHandle(hOutputDup))  CloseHandle(hOutputDup);
+    if (IsValidHandle(hErrorDup))   CloseHandle(hErrorDup);
 
     return exit_code;
 }
